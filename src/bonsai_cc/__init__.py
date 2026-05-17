@@ -1,13 +1,10 @@
-"""bonsai-cc -- grow a bonsai during Claude Code sessions.
+"""bonsai-cc -- grow a bonsai during Claude Code sessions."""
 
-The full architecture is documented in ``the design contract`` at the repo root.
-Key entry points:
+from importlib.metadata import PackageNotFoundError, version
 
-* :mod:`bonsai_cc.cli` -- Typer app exposing the ``bonsai-cc`` command.
-* :mod:`bonsai_cc.events` -- hook payload models, journals, tail-watcher.
-* :mod:`bonsai_cc.web` -- aiohttp web server + SSE + per-theme renderers.
-"""
-
-__version__ = "0.2.0"
+try:
+    __version__ = version("bonsai-cc")
+except PackageNotFoundError:  # editable / source-tree dev
+    __version__ = "0.0.0+unknown"
 
 __all__ = ["__version__"]
