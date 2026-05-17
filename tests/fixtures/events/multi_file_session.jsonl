@@ -1,0 +1,11 @@
+{"ts":1700000000000,"idx":0,"raw":{"session_id":"fixture-multi-002","hook_event_name":"SessionStart","source":"startup","cwd":"/work/proj"}}
+{"ts":1700000001000,"idx":1,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"/work/proj/src/models.py","content":"class User: pass"},"cwd":"/work/proj"}}
+{"ts":1700000002000,"idx":2,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"/work/proj/src/models.py"},"cwd":"/work/proj"}}
+{"ts":1700000003000,"idx":3,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"/work/proj/src/auth.py","old_string":"","new_string":"def login(): ..."},"cwd":"/work/proj"}}
+{"ts":1700000004000,"idx":4,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"/work/proj/src/auth.py","old_string":"...","new_string":"return True"},"cwd":"/work/proj"}}
+{"ts":1700000005000,"idx":5,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"/work/proj/src/auth.py"},"cwd":"/work/proj"}}
+{"ts":1700000006000,"idx":6,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"/work/proj/src/cli.py","content":"main()"},"cwd":"/work/proj"}}
+{"ts":1700000007000,"idx":7,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"/work/proj/src/cli.py"},"cwd":"/work/proj"}}
+{"ts":1700000008000,"idx":8,"raw":{"session_id":"fixture-multi-002","hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"/work/proj/src/models.py"},"cwd":"/work/proj"}}
+{"ts":1700000009000,"idx":9,"raw":{"session_id":"fixture-multi-002","hook_event_name":"Stop","stop_reason":"end_turn"}}
+{"ts":1700000010000,"idx":10,"raw":{"session_id":"fixture-multi-002","hook_event_name":"SessionEnd","end_reason":"clear"}}

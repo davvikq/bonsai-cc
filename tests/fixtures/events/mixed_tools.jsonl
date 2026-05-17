@@ -1,0 +1,15 @@
+{"ts":1700000000000,"idx":0,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"SessionStart","source":"startup","cwd":"/work/proj"}}
+{"ts":1700000001000,"idx":1,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls -la"},"cwd":"/work/proj"}}
+{"ts":1700000002000,"idx":2,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Glob","tool_input":{"pattern":"**/*.py"},"cwd":"/work/proj"}}
+{"ts":1700000003000,"idx":3,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"/work/proj/src/auth.py","old_string":"","new_string":"def login(): ..."},"cwd":"/work/proj"}}
+{"ts":1700000004000,"idx":4,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"/work/proj/src/auth.py"},"cwd":"/work/proj"}}
+{"ts":1700000005000,"idx":5,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"SubagentStart","agent_id":"sub-1","agent_type":"Explore","task":"find tests"}}
+{"ts":1700000006000,"idx":6,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Grep","tool_input":{"pattern":"def test_","path":"/work/proj"},"cwd":"/work/proj"}}
+{"ts":1700000007000,"idx":7,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"SubagentStop","agent_id":"sub-1","agent_type":"Explore","result":"found 12"}}
+{"ts":1700000008000,"idx":8,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"WebFetch","tool_input":{"url":"https://docs.example.com/auth","prompt":"summarize"}}}
+{"ts":1700000009000,"idx":9,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"pytest -k auth"},"cwd":"/work/proj"}}
+{"ts":1700000010000,"idx":10,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUseFailure","tool_name":"Edit","tool_input":{"file_path":"/work/proj/src/auth.py","old_string":"x","new_string":"y"},"cwd":"/work/proj","error":"old_string not found"}}
+{"ts":1700000011000,"idx":11,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Edit","tool_input":{"file_path":"/work/proj/src/auth.py","old_string":"def login(): ...","new_string":"def login(): return True"},"cwd":"/work/proj"}}
+{"ts":1700000012000,"idx":12,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"pytest"},"cwd":"/work/proj/tests"}}
+{"ts":1700000013000,"idx":13,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"Stop","stop_reason":"end_turn"}}
+{"ts":1700000014000,"idx":14,"raw":{"session_id":"fixture-mixed-003","hook_event_name":"SessionEnd","end_reason":"clear"}}
