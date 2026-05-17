@@ -1,0 +1,2163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bonsai-cc</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+  // Run before <style> so the user never sees a flash of the wrong
+  // theme. Reads localStorage; if nothing's saved, the CSS media
+  // query takes over and follows the OS preference.
+  (function () {
+    try {
+      var saved = localStorage.getItem("bcc-theme");
+      if (saved === "dark" || saved === "light") {
+        document.documentElement.setAttribute("data-theme", saved);
+      }
+    } catch (_) { /* private mode / disabled storage -- fine */ }
+  })();
+</script>
+<style>
+  /* ---- Anthropic-inspired color tokens (mirror of tokens.py) ----
+
+     Variable names describe semantic roles, not absolute lightness:
+     `pampas` is always the *elevated* surface (header, cards, pill),
+     `pampas-deep` is always the *page/outer* surface (body, garden,
+     thumbnails). In light mode that resolves to lighter-pampas /
+     deeper-pampas; in dark mode it resolves to lighter-dark /
+     darker-dark. The elevation relationship is preserved either
+     way. */
+  :root {
+    color-scheme: light dark;
+    --bcc-pampas: #F4F3EE;
+    --bcc-pampas-deep: #E8E5DC;
+    --bcc-cloudy: #B1ADA1;
+    --bcc-ink: #191919;
+    --bcc-ink-soft: #4A4540;
+    --bcc-crail: #C15F3C;
+    --bcc-crail-deep: #8E3D24;
+    --bcc-bark: #6B5A48;
+    --bcc-bark-deep: #3D3328;
+    --bcc-border-fine: var(--bcc-border-fine);
+  }
+
+  /* OS-preference dark mode -- yields when an explicit toggle is set. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bcc-pampas: #252220;
+      --bcc-pampas-deep: #1A1816;
+      --bcc-cloudy: #7A7670;
+      --bcc-ink: #E8E5DC;
+      --bcc-ink-soft: #B8B0A4;
+      --bcc-border-fine: rgba(232, 229, 220, 0.08);
+    }
+  }
+  /* Explicit toggle: always wins over the media query. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bcc-pampas: #252220;
+    --bcc-pampas-deep: #1A1816;
+    --bcc-cloudy: #7A7670;
+    --bcc-ink: #E8E5DC;
+    --bcc-ink-soft: #B8B0A4;
+    --bcc-border-fine: rgba(232, 229, 220, 0.08);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+    background: var(--bcc-pampas-deep);
+    color: var(--bcc-ink-soft);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    letter-spacing: -0.01em;
+  }
+  #app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* Header -- editorial / museum-label feel. */
+  header {
+    padding: 14px 22px;
+    display: flex;
+    gap: 18px;
+    align-items: baseline;
+    font-size: 13px;
+    color: var(--bcc-ink-soft);
+    background: var(--bcc-pampas);
+    border-bottom: 1px solid var(--bcc-border-fine);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header .brand {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--bcc-ink);
+    font-size: 14px;
+    text-decoration: none;
+    transition: color 160ms ease;
+  }
+  header a.brand:hover { color: var(--bcc-crail); }
+  /* The live hero's status line -- same museum-label treatment as
+     Garden h2 / subtitle. Weight 500 gives it presence without
+     shouting; size stays small so it doesn't compete with the
+     wordmark or the canvas. */
+  header .banner {
+    color: var(--bcc-ink-soft);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  header .banner.disconnected { color: var(--bcc-crail); }
+  header .session-count {
+    margin-left: auto;
+    color: var(--bcc-cloudy);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+  }
+  /* Dark mode toggle -- sits at the right edge of the header. Shows
+     the icon for the *target* state (moon when light → click to go
+     dark; sun when dark → click to go light). */
+  .theme-toggle {
+    background: transparent;
+    border: 0;
+    margin-left: 12px;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--bcc-ink-soft);
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 160ms ease, color 160ms ease;
+  }
+  .theme-toggle:hover {
+    background: rgba(193, 95, 60, 0.10);
+    color: var(--bcc-crail);
+  }
+  .theme-toggle .theme-icon { display: block; }
+  /* Default (no explicit toggle, OS-light): show moon. */
+  .theme-toggle .icon-to-light { display: none; }
+  .theme-toggle .icon-to-dark  { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-toggle .icon-to-light { display: block; }
+    :root:not([data-theme="light"]) .theme-toggle .icon-to-dark  { display: none; }
+  }
+  :root[data-theme="dark"]  .theme-toggle .icon-to-light { display: block; }
+  :root[data-theme="dark"]  .theme-toggle .icon-to-dark  { display: none; }
+  :root[data-theme="light"] .theme-toggle .icon-to-light { display: none; }
+  :root[data-theme="light"] .theme-toggle .icon-to-dark  { display: block; }
+
+  /* Theme override picker -- thin horizontal strip between the
+     live-pulse Crail line and the hero zone. Visible only when a
+     tree is on screen: ``body.live`` covers both the active live
+     session and the /replay/<id> page (the replay handler ships
+     payloads with ``idle: false``). In idle state the picker
+     would have nothing to re-theme -- the stats hero is the
+     idle visual. Icons stay 40px so they read as small painterly
+     silhouettes rather than buttons. */
+  #theme-picker {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 10px 16px;
+    background: var(--bcc-pampas);
+    border-bottom: 1px solid var(--bcc-border-fine);
+  }
+  body.live #theme-picker { display: flex; }
+  #theme-picker .theme-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .theme-btn {
+    width: 40px;
+    height: 40px;
+    background: transparent;
+    border: 1.5px solid transparent;
+    border-radius: 8px;
+    padding: 5px;
+    cursor: pointer;
+    position: relative;
+    color: var(--bcc-ink-soft);
+    transition:
+      border-color 160ms ease,
+      background 160ms ease,
+      transform 160ms ease;
+  }
+  .theme-btn:hover {
+    background: rgba(193, 95, 60, 0.08);
+    transform: translateY(-1px);
+  }
+  .theme-btn.active {
+    border-color: var(--bcc-crail);
+    background: rgba(193, 95, 60, 0.06);
+  }
+  .theme-btn svg { width: 100%; height: 100%; display: block; }
+  .theme-btn.auto-btn::after {
+    content: "↻";
+    position: absolute;
+    bottom: 1px;
+    right: 2px;
+    font-size: 9px;
+    color: var(--bcc-crail);
+    font-weight: 700;
+    line-height: 1;
+  }
+  .theme-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--bcc-border-fine);
+    margin: 0 4px;
+  }
+  .theme-default-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--bcc-cloudy);
+    font: inherit;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 160ms ease, border-color 160ms ease;
+  }
+  .theme-default-btn:hover {
+    color: var(--bcc-crail);
+    border-color: var(--bcc-border-fine);
+  }
+  .theme-default-btn.confirmed {
+    color: var(--bcc-crail);
+  }
+
+  /* The hero zone occupies the same vertical band whether the
+     page is idle or live. Two siblings live there -- #idle-hero
+     and #live-area -- and CSS swaps which one is visible based on
+     body.live. Default (no body class yet, before the first SSE
+     frame): show idle. */
+  #live-area {
+    display: none;
+    grid-template-columns: 1fr 200px;
+    background: var(--bcc-pampas);
+  }
+  body.live #live-area { display: grid; }
+  #canvas-host {
+    position: relative;
+    overflow: hidden;
+    background: var(--bcc-pampas);
+    height: 62vh;
+    min-height: 380px;
+    max-height: 720px;
+    transition: height 360ms cubic-bezier(0.22, 0.61, 0.36, 1.0);
+  }
+  #canvas-host > div { width: 100%; height: 100%; }
+  #canvas-host > div > svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Tool-stats sidebar (right side of live area). */
+  #tool-stats {
+    border-left: 1px solid var(--bcc-border-fine);
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--bcc-pampas);
+    height: inherit;
+    overflow-y: auto;
+  }
+  #tool-stats h3 {
+    margin: 0 0 10px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--bcc-cloudy);
+    font-weight: 600;
+  }
+  #tool-stats .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    color: var(--bcc-ink-soft);
+    font-size: 13px;
+    letter-spacing: -0.01em;
+  }
+  #tool-stats .row .icon {
+    width: 18px;
+    height: 18px;
+    color: var(--bcc-bark);
+    flex-shrink: 0;
+  }
+  #tool-stats .row .icon svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  #tool-stats .row .label { flex: 1; }
+  #tool-stats .row .count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--bcc-ink);
+    min-width: 22px;
+    text-align: right;
+  }
+  #tool-stats .row.zero .label,
+  #tool-stats .row.zero .count {
+    color: var(--bcc-cloudy);
+  }
+  #tool-stats .row.zero .icon { color: var(--bcc-cloudy); }
+  #tool-stats .row.errors {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--bcc-border-fine);
+  }
+  #tool-stats .row.errors .icon,
+  #tool-stats .row.errors .count { color: var(--bcc-crail); }
+  /* Pulse animation when a count increments. Subtle scale, no
+     colour flash. */
+  @keyframes bcc-tool-pulse {
+    0%   { transform: scale(1.0); }
+    50%  { transform: scale(1.10); }
+    100% { transform: scale(1.0); }
+  }
+  #tool-stats .row.pulse .count {
+    animation: bcc-tool-pulse 200ms ease-out;
+    display: inline-block;
+  }
+
+  /* Hero accent when a session is live -- a thin Crail strip along
+     the top of the canvas signals "active growth happening." */
+  #live-pulse {
+    height: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--bcc-crail) 50%,
+      transparent 100%
+    );
+    transition: height 360ms cubic-bezier(0.22, 0.61, 0.36, 1.0);
+  }
+  body.live #live-pulse { height: 2px; }
+
+  /* Live status footer -- museum exhibit label. */
+  #live-footer {
+    padding: 10px 22px 14px;
+    font-size: 11px;
+    color: var(--bcc-ink-soft);
+    background: var(--bcc-pampas);
+    border-top: 1px solid var(--bcc-border-fine);
+    border-bottom: 1px solid var(--bcc-border-fine);
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  #live-footer .pair {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+  }
+  #live-footer .label {
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    font-size: 10px;
+    color: var(--bcc-cloudy);
+    font-weight: 600;
+  }
+  #live-footer .value { color: var(--bcc-ink-soft); font-weight: 400; }
+
+  /* SVG-swap transition */
+  .fade-in { animation: bcc-fade-in 420ms cubic-bezier(0.22, 0.61, 0.36, 1.0) both; }
+  @keyframes bcc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ---- Idle hero (no live session active) -----------------------
+     Three big stats centered, with a one-line italic tagline
+     below. Occupies the same vertical space as the live area's
+     canvas+sidebar so toggling between idle and live feels like
+     a single zone changing contents, not the page reflowing. */
+  #idle-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 44px;
+    padding: 80px 24px;
+    background: var(--bcc-pampas);
+    min-height: 62vh;
+    box-sizing: border-box;
+  }
+  body.live #idle-hero { display: none; }
+  body.live #live-footer { display: flex; }
+  body:not(.live) #live-footer { display: none; }
+  #idle-hero .idle-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+    gap: 56px;
+    max-width: 920px;
+    width: 100%;
+  }
+  .hero-stat {
+    text-align: center;
+  }
+  .hero-stat .value {
+    font-size: 64px;
+    font-weight: 500;
+    letter-spacing: -0.04em;
+    color: var(--bcc-ink);
+    line-height: 1.0;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-stat .label {
+    margin-top: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 11px;
+    color: var(--bcc-cloudy);
+    font-weight: 600;
+  }
+  .hero-stat .secondary {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--bcc-ink-soft);
+    letter-spacing: -0.01em;
+    min-height: 1em;
+  }
+  .hero-stat.empty .value { color: var(--bcc-cloudy); }
+  #idle-hero .tagline {
+    margin: 0;
+    font-size: 16px;
+    color: var(--bcc-ink-soft);
+    font-style: italic;
+    font-family: Georgia, "Times New Roman", "Source Serif Pro", serif;
+    letter-spacing: -0.005em;
+    text-align: center;
+    max-width: 480px;
+    line-height: 1.5;
+  }
+
+  /* ---- Garden section: filter bar + card grid ---- */
+  #garden {
+    padding: 28px 22px 48px;
+    background: var(--bcc-pampas-deep);
+  }
+  /* Section headers -- museum exhibit labels: confident but quiet.
+     Larger size, lighter weight, slightly tighter tracking; subtitle
+     uses ink-soft (not cloudy) so it's clearly the supporting line
+     and not vanishing into the background. */
+  #garden h2 {
+    margin: 0 0 6px;
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+    color: var(--bcc-ink);
+  }
+  #garden .subtitle {
+    margin: 0 0 22px;
+    font-size: 13px;
+    color: var(--bcc-ink-soft);
+  }
+  #filters {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    align-items: center;
+  }
+  #filters input, #filters select {
+    font: inherit;
+    font-size: 12px;
+    color: var(--bcc-ink-soft);
+    background: var(--bcc-pampas);
+    border: 1px solid rgba(25, 25, 25, 0.08);
+    border-radius: 6px;
+    padding: 7px 10px;
+    letter-spacing: -0.01em;
+  }
+  #filters input::placeholder { color: var(--bcc-cloudy); }
+  #filters input:focus, #filters select:focus {
+    outline: none;
+    border-color: var(--bcc-crail);
+    box-shadow: 0 0 0 3px rgba(193, 95, 60, 0.12);
+  }
+  #filters button.clear {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--bcc-cloudy);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+  }
+  #filters button.clear:hover { color: var(--bcc-crail); }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--bcc-pampas);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition:
+      transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1.0),
+      box-shadow 180ms cubic-bezier(0.22, 0.61, 0.36, 1.0);
+    box-shadow: 0 1px 2px rgba(25, 25, 25, 0.04);
+    display: block;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  }
+  /* The "latest" badge -- top-right Crail pill on the most recent
+     saved card. Acts as a visual entry point for users returning
+     to the garden ("start here"). */
+  .card { position: relative; }
+  .card .latest-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    background: var(--bcc-crail);
+    color: #FFFFFF;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    box-shadow: 0 1px 2px rgba(142, 61, 36, 0.25);
+  }
+  /* Today's sessions get a Crail tint on the relative timestamp so
+     "what did I do today" stands out at a glance. */
+  .card .stats.today { color: var(--bcc-crail); }
+  /* Errored sessions surface a small alert-triangle icon next to
+     the error count -- the icon is the salient signal, the count
+     is the detail. */
+  .card .err {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--bcc-crail-deep);
+  }
+  .card .err svg {
+    width: 11px;
+    height: 11px;
+    display: block;
+  }
+  /* Live sessions render as non-link cards (no replay row in the
+     garden yet). Visual: same warmth as a saved card but no hover
+     lift and a slightly muted thumbnail so the eye knows it's not
+     interactive. */
+  .card.disabled {
+    cursor: not-allowed;
+  }
+  .card.disabled:hover {
+    transform: none;
+    box-shadow: 0 1px 2px rgba(25, 25, 25, 0.04);
+  }
+  .card.disabled .thumb { opacity: 0.7; }
+  .card .thumb {
+    aspect-ratio: 5 / 4;
+    background: var(--bcc-pampas-deep);
+    position: relative;
+    overflow: hidden;
+  }
+  .card .thumb > svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .card .meta {
+    padding: 12px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .card .row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .card .sid {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--bcc-ink);
+    letter-spacing: -0.005em;
+  }
+  .card .theme {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--bcc-cloudy);
+    font-weight: 600;
+  }
+  .card .stats {
+    font-size: 11px;
+    color: var(--bcc-cloudy);
+    display: flex;
+    gap: 10px;
+  }
+  .card .stats .err { color: var(--bcc-crail-deep); }
+  .card .project {
+    font-size: 11px;
+    color: var(--bcc-cloudy);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---- Replay overlay ---- */
+  #replay-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 14px 7px 8px;
+    background: var(--bcc-pampas-deep);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(25, 25, 25, 0.05);
+    border-radius: 999px;
+    /* Softer shadow, faintly warmed by Crail to belong to the
+       Anthropic palette rather than reading as generic-player. */
+    box-shadow:
+      0 1px 2px rgba(25, 25, 25, 0.04),
+      0 6px 18px rgba(142, 61, 36, 0.10);
+    font-size: 11px;
+    color: var(--bcc-ink-soft);
+    z-index: 20;
+    transition: opacity 360ms ease;
+  }
+  #replay-controls.hidden { opacity: 0; pointer-events: none; }
+  #replay-controls button {
+    background: transparent;
+    border: 0;
+    padding: 6px 10px;
+    font: inherit;
+    color: var(--bcc-ink);
+    cursor: pointer;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 160ms ease, color 160ms ease;
+  }
+  #replay-controls button:hover {
+    background: rgba(193, 95, 60, 0.10);
+    color: var(--bcc-crail-deep);
+  }
+  #replay-controls button svg { display: block; }
+  /* Speed selector: kill the native chrome, draw our own chevron
+     so it matches the rest of the pill instead of dropping the
+     OS-default widget into an otherwise warm-toned surface. */
+  #replay-controls .speed {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: var(--bcc-pampas);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M3 5l3 3 3-3' stroke='%234A4540' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+    background-size: 10px 10px;
+    border: 1px solid var(--bcc-border-fine);
+    border-radius: 999px;
+    padding: 4px 22px 4px 10px;
+    color: var(--bcc-ink);
+    font: inherit;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+  }
+  #replay-controls .speed:hover { border-color: rgba(25, 25, 25, 0.12); }
+  #replay-controls .speed:focus {
+    outline: none;
+    border-color: var(--bcc-crail);
+    box-shadow: 0 0 0 3px rgba(193, 95, 60, 0.14);
+  }
+  #replay-controls .progress {
+    width: 180px;
+    height: 3px;
+    background: rgba(193, 95, 60, 0.14);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #replay-controls .progress .bar {
+    height: 100%;
+    background: var(--bcc-crail);
+    width: 0%;
+    transition: width 220ms cubic-bezier(0.22, 0.61, 0.36, 1.0);
+  }
+  #replay-controls .counter {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    color: var(--bcc-cloudy);
+    min-width: 56px;
+    text-align: right;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  #replay-controls .share-msg {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--bcc-crail);
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+  #replay-controls .share-msg.show { opacity: 1; }
+
+  /* Empty state */
+  #empty-garden {
+    text-align: center;
+    padding: 56px 24px 72px;
+    color: var(--bcc-ink-soft);
+  }
+  #empty-garden svg { width: 200px; height: 200px; opacity: 0.9; }
+  #empty-garden h3 {
+    margin: 14px 0 8px;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--bcc-ink);
+    letter-spacing: -0.02em;
+  }
+  #empty-garden p {
+    margin: 0 auto;
+    max-width: 480px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--bcc-ink-soft);
+  }
+
+  /* Screen-reader-only label class. The filter inputs/selects ship
+     with both visible placeholders and ``aria-label``; a hidden
+     ``<label for>`` is added for assistive tech that prefers the
+     semantic association (NVDA, Dragon, some older screen readers
+     that ignore ``aria-label`` on form controls). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ---- Mobile / narrow-viewport adjustments ----
+     The page is a desktop-first dev tool, but replay share-links
+     (``/replay/<id>``) need to be at least readable on a phone so a
+     teammate doesn't see a broken layout when the author drops a
+     link in chat. Single breakpoint at 720px covers tablet portrait
+     and phone landscape. */
+  @media (max-width: 720px) {
+    header {
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 14px;
+    }
+    header .session-count { margin-left: 0; }
+    /* Live area: stack canvas above the tools sidebar so the canvas
+       gets full width instead of being squeezed to ~120 px. */
+    #live-area { grid-template-columns: 1fr; }
+    #tool-stats {
+      border-left: 0;
+      border-top: 1px solid var(--bcc-border-fine);
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      padding: 12px 14px;
+    }
+    #tool-stats h3 { width: 100%; }
+    #tool-stats .row { padding: 2px 0; }
+    /* Idle hero: stack the three stats vertically; keep them
+       generously spaced so each is still tappable. */
+    #idle-hero {
+      padding: 48px 18px;
+      min-height: 50vh;
+      gap: 32px;
+    }
+    #idle-hero .idle-stats {
+      grid-template-columns: 1fr;
+      gap: 28px;
+    }
+    .hero-stat .value { font-size: 44px; }
+    /* Garden: cards already use ``auto-fill, minmax(260px, 1fr)``,
+       which collapses to one column under 280 px -- but the gap is
+       too generous on small screens. */
+    #garden { padding: 20px 14px 32px; }
+    #grid { gap: 12px; }
+    /* Filters: each input takes the full row so the placeholder
+       text is readable. */
+    #filters { flex-direction: column; align-items: stretch; }
+    #filters input, #filters select { width: 100%; box-sizing: border-box; }
+    #f-project { min-width: 0 !important; }
+    /* Theme picker: hide on phones -- the canvas is already showing
+       the auto-detected theme, the picker is desktop polish, and
+       a 14-button strip wraps into 3 rows of ant-sized SVGs which
+       looks broken. Power users can still hit ``?theme=sakura`` in
+       the URL. */
+    #theme-picker { display: none; }
+    /* Replay controls: the bar lives at bottom-centre and the
+       progress bar would overflow a phone width. Shrink it. */
+    #replay-controls {
+      width: calc(100vw - 24px);
+      bottom: 12px;
+      padding: 10px 14px;
+      gap: 10px;
+    }
+    #replay-controls .progress { width: 100%; flex: 1; min-width: 60px; }
+    #replay-controls .counter { min-width: 0; }
+    /* Live footer: tighter spacing, smaller type. */
+    #live-footer {
+      padding: 8px 14px 10px;
+      gap: 14px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Inline Tabler-icon sprite. Self-hosted: no CDN, no external
+     fetch. Each symbol uses the standard Tabler outline-icon
+     attributes (viewBox 0 0 24 24, stroke=currentColor, fill=none,
+     stroke-width=2, round joins). Consumers reference them via
+     <svg class="icon"><use href="#ti-..."/></svg>. -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="ti-terminal-2" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 7l5 5l-5 5"/><path d="M12 19h7"/>
+  </symbol>
+  <symbol id="ti-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 7H6a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"/>
+    <path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97L9 12v3h3l8.385 -8.415z"/>
+    <path d="M16 5l3 3"/>
+  </symbol>
+  <symbol id="ti-file-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1 -2 -2V5a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/>
+    <path d="M12 11v6"/><path d="M9 14h6"/>
+  </symbol>
+  <symbol id="ti-file-text" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1 -2 -2V5a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/>
+    <path d="M9 9h1"/><path d="M9 13h6"/><path d="M9 17h6"/>
+  </symbol>
+  <symbol id="ti-asterisk" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 12l8 -4.5"/><path d="M12 12V21"/><path d="M12 12l8 4.5"/>
+    <path d="M12 12l-8 4.5"/><path d="M12 3v9"/><path d="M12 12l-8 -4.5"/>
+  </symbol>
+  <symbol id="ti-search" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 21l-6 -6"/>
+    <path d="M10 17a7 7 0 1 1 0 -14a7 7 0 0 1 0 14z"/>
+  </symbol>
+  <symbol id="ti-world-www" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19.5 7a8.991 8.991 0 0 0 -7.5 -4a8.991 8.991 0 0 0 -7.5 4"/>
+    <path d="M4.5 17a8.991 8.991 0 0 0 7.5 4a8.991 8.991 0 0 0 7.5 -4"/>
+    <path d="M3 12h18"/><path d="M12 3a14 14 0 0 0 0 18"/>
+    <path d="M12 3a14 14 0 0 1 0 18"/>
+  </symbol>
+  <symbol id="ti-network" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 6a3 3 0 1 0 6 0a3 3 0 0 0 -6 0z"/>
+    <path d="M3 19a3 3 0 1 0 6 0a3 3 0 0 0 -6 0z"/>
+    <path d="M15 19a3 3 0 1 0 6 0a3 3 0 0 0 -6 0z"/>
+    <path d="M12 9v3"/><path d="M6 16l5.5 -4"/><path d="M18 16l-5.5 -4"/>
+  </symbol>
+  <symbol id="ti-notebook" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2H6a1 1 0 0 1 -1 -1V5a1 1 0 0 1 1 -1m3 0v18"/>
+    <path d="M13 8h2"/><path d="M13 12h2"/>
+  </symbol>
+  <symbol id="ti-tool" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 10h3V7L6.5 3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5"/>
+  </symbol>
+  <symbol id="ti-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 9v2"/><path d="M12 15v.01"/>
+    <path d="M5 19h14a2 2 0 0 0 1.84 -2.75l-7.1 -12.25a2 2 0 0 0 -3.5 0l-7.1 12.25a2 2 0 0 0 1.75 2.75"/>
+  </symbol>
+  <symbol id="ti-link" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 15l6 -6"/>
+    <path d="M11 6l.463 -.536a5 5 0 0 1 7.071 7.071l-.534 .464"/>
+    <path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463"/>
+  </symbol>
+  <symbol id="ti-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>
+  </symbol>
+  <symbol id="ti-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>
+  </symbol>
+</svg>
+
+<div id="app">
+  <header>
+    <a href="/" class="brand" title="back to garden">bonsai-cc</a>
+    <span id="banner" class="banner">connecting…</span>
+    <span class="session-count" id="session-count"></span>
+    <button id="theme-toggle" class="theme-toggle"
+            aria-label="toggle dark mode" title="toggle dark mode">
+      <svg class="theme-icon icon-to-dark" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#ti-moon"/></svg>
+      <svg class="theme-icon icon-to-light" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#ti-sun"/></svg>
+    </button>
+  </header>
+
+  <!-- Live tree (fed by SSE from /events). The Crail strip
+       appears only when a session is active. -->
+  <div id="live-pulse" aria-hidden="true"></div>
+
+  <!-- Theme override picker. Auto by default -- follows the
+       project's auto-detected language. Click any silhouette to
+       force that theme for the current session; click "auto" to
+       revert. Choice persists in the URL (``?theme=sakura``) and
+       optionally as a localStorage default. -->
+  <div id="theme-picker" role="toolbar" aria-label="theme override">
+    <div class="theme-row">
+      <button class="theme-btn auto-btn" data-theme="auto"
+              title="auto — follows project language"
+              aria-label="auto theme — follows project language">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+          <path d="M4 13a8 8 0 0 1 14 -4l1 -1"/>
+          <path d="M19 7v4h-4"/>
+          <path d="M20 11a8 8 0 0 1 -14 4l-1 1"/>
+          <path d="M5 17v-4h4"/>
+        </svg>
+      </button>
+      <span class="theme-divider" aria-hidden="true"></span>
+      <button class="theme-btn" data-theme="generic" title="generic"
+              aria-label="generic theme">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <ellipse cx="20" cy="14" rx="11" ry="6" fill="#6B7A4A"/>
+          <path d="M16 18 Q20 24 18 32 L22 32 Q22 22 24 18 Z" fill="#6B5A48"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="bamboo" title="bamboo (python)"
+              aria-label="bamboo theme — python projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <line x1="14" y1="34" x2="14" y2="10" stroke="#6B7A4A" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="20" y1="34" x2="20" y2="7"  stroke="#7A8C5C" stroke-width="3"   stroke-linecap="round"/>
+          <line x1="26" y1="34" x2="26" y2="12" stroke="#6B7A4A" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="pine" title="pine (rust)"
+              aria-label="pine theme — rust projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <polygon points="20,6 12,18 28,18"  fill="#6B7A4A"/>
+          <polygon points="20,16 10,28 30,28" fill="#6B7A4A"/>
+          <rect x="18" y="28" width="4" height="6" fill="#6B5A48"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="oak" title="oak (go)"
+              aria-label="oak theme — go projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="14" r="10" fill="#6B7A4A"/>
+          <rect x="18" y="22" width="4" height="14" fill="#6B5A48"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="willow" title="willow (javascript)"
+              aria-label="willow theme — javascript projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <path d="M10 14 Q20 18 30 14 Q28 28 22 32 Q14 28 12 30 Q10 22 10 14 Z" fill="#A8C28A"/>
+          <rect x="18" y="14" width="4" height="20" fill="#6B5A48"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="willow_ts" title="willow_ts (typescript)"
+              aria-label="willow theme — typescript projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <path d="M10 14 Q20 18 30 14 Q28 28 22 32 Q14 28 12 30 Q10 22 10 14 Z" fill="#A8C28A"/>
+          <circle cx="14" cy="22" r="2.5" fill="#3D7AB8"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="sakura" title="sakura (swift)"
+              aria-label="sakura theme — swift projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <g transform="translate(20,14)">
+            <ellipse cx="0" cy="-6" rx="3" ry="5" fill="#E8B8C8"/>
+            <ellipse cx="0" cy="-6" rx="3" ry="5" fill="#E8B8C8" transform="rotate(72)"/>
+            <ellipse cx="0" cy="-6" rx="3" ry="5" fill="#E8B8C8" transform="rotate(144)"/>
+            <ellipse cx="0" cy="-6" rx="3" ry="5" fill="#E8B8C8" transform="rotate(216)"/>
+            <ellipse cx="0" cy="-6" rx="3" ry="5" fill="#E8B8C8" transform="rotate(288)"/>
+            <circle cx="0" cy="0" r="1.5" fill="#D89AB0"/>
+          </g>
+          <rect x="18" y="20" width="4" height="14" fill="#6B5A48"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="maple" title="maple (ruby)"
+              aria-label="maple theme — ruby projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <path d="M20 4 L24 14 L33 14 L26 20 L29 30 L20 24 L11 30 L14 20 L7 14 L16 14 Z" fill="#A33D24"/>
+          <rect x="18" y="28" width="4" height="8" fill="#6B5A48"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="old_oak" title="old_oak (c, cpp)"
+              aria-label="old oak theme — c and cpp projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="13" r="11" fill="#6B7A4A"/>
+          <path d="M16 21 Q14 28 16 36 L24 36 Q26 28 24 21 Z" fill="#3D3328"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="banyan" title="banyan (java)"
+              aria-label="banyan theme — java projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="12" r="9" fill="#6B7A4A"/>
+          <rect x="18" y="20" width="4" height="16" fill="#6B5A48"/>
+          <line x1="14" y1="20" x2="14" y2="34" stroke="#6B5A48" stroke-width="1.5"/>
+          <line x1="26" y1="20" x2="26" y2="34" stroke="#6B5A48" stroke-width="1.5"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="ginkgo" title="ginkgo (haskell)"
+              aria-label="ginkgo theme — haskell projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <path d="M20 22 Q12 16 14 8 Q20 5 26 8 Q28 16 20 22 Z" fill="#D4A027"/>
+          <rect x="18" y="22" width="4" height="14" fill="#6B5A48"/>
+        </svg>
+      </button>
+      <button class="theme-btn" data-theme="birch" title="birch (zig)"
+              aria-label="birch theme — zig projects">
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <rect x="19" y="6" width="2.5" height="30" fill="#E8E0D4" stroke="#6B5A48" stroke-width="0.5"/>
+          <line x1="14" y1="14" x2="19" y2="14" stroke="#6B5A48" stroke-width="1.2"/>
+          <line x1="21" y1="22" x2="26" y2="22" stroke="#6B5A48" stroke-width="1.2"/>
+          <line x1="14" y1="28" x2="19" y2="28" stroke="#6B5A48" stroke-width="1.2"/>
+        </svg>
+      </button>
+    </div>
+    <button id="theme-make-default" class="theme-default-btn" hidden
+            title="remember this theme as default for all sessions">
+      make default
+    </button>
+  </div>
+
+  <!-- Idle hero: shown when there's no live session. Three big
+       stats (fed by /api/garden/stats via loadHeroStats) with a
+       one-line tagline underneath. The live tree below replaces
+       this when a session is active (CSS swap on body.live). -->
+  <section id="idle-hero" aria-label="garden summary">
+    <div class="idle-stats">
+      <div class="hero-stat empty">
+        <div class="value" id="hs-total-value">--</div>
+        <div class="label">Total time</div>
+        <div class="secondary" id="hs-total-secondary"></div>
+      </div>
+      <div class="hero-stat empty">
+        <div class="value" id="hs-sessions-value">--</div>
+        <div class="label">Sessions</div>
+        <div class="secondary" id="hs-sessions-secondary"></div>
+      </div>
+      <div class="hero-stat empty">
+        <div class="value" id="hs-streak-value">--</div>
+        <div class="label">Current streak</div>
+        <div class="secondary" id="hs-streak-secondary"></div>
+      </div>
+    </div>
+    <p class="tagline">Plant a tree in any project -- bonsai-cc grows alongside your work.</p>
+  </section>
+
+  <div id="live-area">
+    <div id="canvas-host"></div>
+    <aside id="tool-stats" aria-label="tool usage in this session">
+      <h3>tools</h3>
+      <!-- Rows populated by JS. -->
+    </aside>
+  </div>
+  <div id="live-footer">
+    <div class="pair"><span class="label">Session</span><span class="value" id="v-session">--</span></div>
+    <div class="pair"><span class="label">Theme</span><span class="value" id="v-theme">--</span></div>
+    <div class="pair"><span class="label">Events</span><span class="value" id="v-events">0</span></div>
+    <div class="pair"><span class="label">Last</span><span class="value" id="v-last">--</span></div>
+    <div class="pair"><span class="label">Branches</span><span class="value" id="v-branches">0</span></div>
+    <div class="pair"><span class="label">Status</span><span class="value" id="v-status">daemon ready</span></div>
+  </div>
+
+  <!-- Replay playback controls (only visible on /replay/<id>) -->
+  <div id="replay-controls" hidden>
+    <button id="rc-toggle" title="play/pause" aria-label="play or pause replay">⏸</button>
+    <select id="rc-speed" class="speed" title="playback speed" aria-label="replay playback speed">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+    <div class="progress" aria-label="replay progress">
+      <div class="bar" id="rc-bar"></div>
+    </div>
+    <div class="counter" id="rc-counter">0 / 0</div>
+    <button id="rc-share" title="copy link" aria-label="copy link">
+      <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><use href="#ti-link"/></svg>
+    </button>
+    <span class="share-msg" id="rc-share-msg">link copied</span>
+  </div>
+
+  <!-- Garden grid (fed by /api/garden) -->
+  <section id="garden">
+    <h2>Garden</h2>
+    <p class="subtitle">Every Claude Code session you've grown.</p>
+    <div id="filters">
+      <label for="f-search" class="sr-only">Search session id or path</label>
+      <input id="f-search" type="search" placeholder="search session id or path…"
+             aria-label="search session id or path">
+      <label for="f-language" class="sr-only">Filter by detected language</label>
+      <select id="f-language" aria-label="filter by detected language">
+        <option value="">all languages</option>
+      </select>
+      <label for="f-project" class="sr-only">Filter by project path</label>
+      <input id="f-project" type="search" placeholder="filter by project path…"
+             aria-label="filter by project path" style="min-width: 240px">
+      <button class="clear" id="f-clear">clear</button>
+    </div>
+    <div id="grid"></div>
+    <div id="empty-garden" hidden>
+      <svg viewBox="0 0 200 200" role="img" aria-label="empty pot with seed">
+        <defs>
+          <linearGradient id="ep-pot" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#8E3D24"/>
+            <stop offset="100%" stop-color="#3D3328"/>
+          </linearGradient>
+        </defs>
+        <ellipse cx="100" cy="172" rx="62" ry="10" fill="#191919" opacity="0.12"/>
+        <path d="M58,110 Q56,118 64,128 L74,156 Q78,164 86,164 L114,164 Q122,164 126,156 L136,128 Q144,118 142,110 Z" fill="url(#ep-pot)"/>
+        <rect x="58" y="104" width="84" height="9" fill="#7A4530"/>
+        <ellipse cx="100" cy="111" rx="38" ry="3" fill="#3D3328"/>
+        <circle cx="100" cy="108" r="3" fill="#6B7A4A"/>
+      </svg>
+      <h3>No trees yet</h3>
+      <p>Plant your first tree by starting a Claude Code session in any project where bonsai-cc is installed. Run <code>bonsai-cc install-hook</code> if you haven't.</p>
+    </div>
+  </section>
+</div>
+<script>
+// @ts-check
+
+const $banner   = document.getElementById("banner");
+const $host     = document.getElementById("canvas-host");
+// Tracks whether paintSvg has run once. The .fade-in CSS animation
+// is a one-shot reveal, not a per-frame transition -- re-adding the
+// class on every paint resets the canvas to opacity 0 between
+// frames. See paintSvg() below.
+let _firstPaintDone = false;
+const $session  = document.getElementById("v-session");
+const $theme    = document.getElementById("v-theme");
+const $events   = document.getElementById("v-events");
+const $last     = document.getElementById("v-last");
+const $branches = document.getElementById("v-branches");
+const $status   = document.getElementById("v-status");
+const $sessCount= document.getElementById("session-count");
+const $grid     = document.getElementById("grid");
+const $empty    = document.getElementById("empty-garden");
+const $fSearch  = /** @type {HTMLInputElement|null} */ (document.getElementById("f-search"));
+const $fLang    = /** @type {HTMLSelectElement|null} */ (document.getElementById("f-language"));
+const $fProj    = /** @type {HTMLInputElement|null} */ (document.getElementById("f-project"));
+const $fClear   = document.getElementById("f-clear");
+
+let lastEventEpochMs = /** @type {number | null} */ (null);
+let lastEventName = "";
+let lastIdle = false;
+let lastProjectRoot = "";
+let cachedState = /** @type {any} */ (null);
+let ready = false;
+// ---- Theme override --------------------------------------------
+//
+// The picker strip writes its choice here ("auto" = use the
+// server's auto-detected theme; any of the 12 named themes
+// forces it). The value flows into `openStream()` as the
+// SSE `?theme=` query param so the server renders accordingly.
+//
+// Precedence on page load: URL ?theme= > localStorage default >
+// "auto". A typo'd theme in the URL is treated as "auto" by
+// the server (resolve_theme_override returns None), so we don't
+// need to whitelist client-side.
+const _KNOWN_THEMES = [
+  "auto", "generic", "bamboo", "pine", "oak", "willow",
+  "willow_ts", "sakura", "maple", "old_oak", "banyan",
+  "ginkgo", "birch",
+];
+
+function _readUrlTheme() {
+  const t = new URLSearchParams(window.location.search).get("theme");
+  return _KNOWN_THEMES.includes(t) ? t : null;
+}
+
+function _readDefaultTheme() {
+  try {
+    const t = localStorage.getItem("bcc-default-theme");
+    return _KNOWN_THEMES.includes(t) ? t : null;
+  } catch (_) { return null; }
+}
+
+let currentTheme = _readUrlTheme() || _readDefaultTheme() || "auto";
+
+// Tracks which session ids are currently visible as cards in the
+// garden grid. The hero shouldn't show a session that's already in
+// the grid (the daemon doesn't push an idle frame on SessionEnd, so
+// the canvas would otherwise keep painting the final state of a
+// just-saved session -- visible duplicate). See `applyPayload` and
+// `renderGarden`.
+let gardenSessionIds = new Set();
+
+// The most recent payload's light/dark SVG variants. Kept in
+// module scope so the theme toggle can repaint the canvas without
+// reconnecting the SSE stream (the server already pre-rendered
+// both variants and shipped them in the same frame).
+let cachedSvgLight = /** @type {string | null} */ (null);
+let cachedSvgDark  = /** @type {string | null} */ (null);
+
+// The runner's currently-tracked session_id, mirrored from each
+// SSE payload's `live_session_id` field. Used to detect the
+// "session just ended" transition (non-null → null) and trigger
+// an immediate garden refresh -- without this, the just-finished
+// session only appears in the grid on the next 30s poll, which
+// reads as broken to a user who just typed `/exit`.
+let lastLiveSessionId = /** @type {string | null} */ (null);
+
+/** Read the currently-applied page theme.
+ *
+ *  `<html data-theme="dark|light">` wins (explicit user toggle);
+ *  otherwise fall back to OS preference via the media query.
+ */
+function isDarkTheme() {
+  const explicit = document.documentElement.getAttribute("data-theme");
+  if (explicit === "dark") return true;
+  if (explicit === "light") return false;
+  return window.matchMedia &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+// ---- Tool stats sidebar ------------------------------------------
+//
+// One row per tool plus an Errors row at the bottom. Rows sort by
+// count descending (zeros at the end). A count increment kicks off
+// a 200ms scale pulse on the .count span -- no colour flash.
+
+/** @type {Array<[string,string]>} mapping of tool_name → Tabler icon id. */
+const TOOL_ICONS = [
+  ["Bash",         "ti-terminal-2"],
+  ["Edit",         "ti-edit"],
+  ["Write",        "ti-file-plus"],
+  ["Read",         "ti-file-text"],
+  ["Glob",         "ti-asterisk"],
+  ["Grep",         "ti-search"],
+  ["WebFetch",     "ti-world-www"],
+  ["WebSearch",    "ti-search"],
+  ["Task",         "ti-network"],
+  ["NotebookEdit", "ti-notebook"],
+];
+
+/** @type {Map<string, number>} previous render's per-tool counts. */
+const prevToolCounts = new Map();
+let prevErrorCount = 0;
+
+/**
+ *  @param {Record<string, number>} counts
+ *  @param {number} errorCount
+ */
+function renderToolStats(counts, errorCount) {
+  const $panel = document.getElementById("tool-stats");
+  if (!$panel) return;
+  // Wipe existing rows (but keep the <h3> header).
+  for (const node of Array.from($panel.children)) {
+    if (node.tagName !== "H3") node.remove();
+  }
+  /** @type {Array<[string, string, number]>} (label, icon, count) */
+  const rows = TOOL_ICONS.map(([label, icon]) => [label, icon, counts[label] || 0]);
+  // Add an "Other" bucket for tool_names not in the registry.
+  let otherCount = 0;
+  for (const [name, n] of Object.entries(counts)) {
+    if (!TOOL_ICONS.some((p) => p[0] === name)) otherCount += /** @type {number} */ (n);
+  }
+  if (otherCount > 0) rows.push(["Other", "ti-tool", otherCount]);
+  // Sort: non-zero counts desc, then zeros (stable order).
+  rows.sort((a, b) => {
+    if (a[2] === 0 && b[2] === 0) return 0;
+    if (a[2] === 0) return 1;
+    if (b[2] === 0) return -1;
+    return b[2] - a[2];
+  });
+  for (const [label, icon, count] of rows) {
+    const prev = prevToolCounts.get(label) || 0;
+    const pulsed = count > prev;
+    const row = document.createElement("div");
+    row.className = "row" + (count === 0 ? " zero" : "") + (pulsed ? " pulse" : "");
+    row.innerHTML = `
+      <span class="icon"><svg viewBox="0 0 24 24"><use href="#${icon}"/></svg></span>
+      <span class="label">${label}</span>
+      <span class="count">${count}</span>`;
+    $panel.appendChild(row);
+    prevToolCounts.set(label, count);
+  }
+  // Errors row, always last, distinct styling.
+  const errPulsed = errorCount > prevErrorCount;
+  const errRow = document.createElement("div");
+  errRow.className =
+    "row errors" + (errorCount === 0 ? " zero" : "") + (errPulsed ? " pulse" : "");
+  errRow.innerHTML = `
+    <span class="icon"><svg viewBox="0 0 24 24"><use href="#ti-alert-triangle"/></svg></span>
+    <span class="label">Errors</span>
+    <span class="count">${errorCount}</span>`;
+  $panel.appendChild(errRow);
+  prevErrorCount = errorCount;
+}
+
+// Seed an all-zero panel on page load so the user sees the layout
+// before any events arrive.
+renderToolStats({}, 0);
+
+// ---- Live tree SSE ------------------------------------------------
+
+/**
+ * Parse an SVG string and insert it into ``$host``, replacing any
+ * previous tree. Returns true on success, false on parse failure.
+ *
+ * **Why not innerHTML?** ``element.innerHTML = svgString`` is a
+ * documented trap (see DESIGN.md "Known gotchas"). The HTML parser
+ * uses "foreign content" rules to switch into the SVG namespace
+ * when it sees ``<svg>``, but the exact behaviour depends on the
+ * host element's context, the document mode, and parser-state
+ * recovery. We've seen it silently produce an empty subtree on
+ * replay (commit history: 972cec0 didn't fix the canvas-blank
+ * bug). ``DOMParser`` with ``image/svg+xml`` parses the string in
+ * the SVG namespace explicitly -- no foreign-content gymnastics.
+ *
+ *  @param {string} svgString
+ *  @param {HTMLElement} host
+ */
+function paintSvg(svgString, host) {
+  if (!svgString || !host) return false;
+  try {
+    const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+    const errNode = doc.getElementsByTagName("parsererror")[0];
+    if (errNode) {
+      console.error("SVG parsererror:", errNode.textContent, "\nhead:",
+        svgString.slice(0, 200));
+      return false;
+    }
+    const root = doc.documentElement;
+    if (!root || root.tagName.toLowerCase() !== "svg") {
+      console.error("SVG parse produced non-<svg> root:",
+        root && root.tagName, "head:", svgString.slice(0, 200));
+      return false;
+    }
+    // Import into the host document so the node belongs to the
+    // page (otherwise event handlers / styling can misbehave).
+    const imported = document.importNode(root, /* deep */ true);
+    // Wrap so the .fade-in animation has a styled target separate
+    // from the SVG itself (the CSS uses ``#canvas-host > div``).
+    const wrap = document.createElement("div");
+    // .fade-in animates opacity 0 -> 1 over 420ms. Adding it to
+    // every paint resets the canvas to opacity 0 every frame; at
+    // replay speed 1.0 (200ms / frame) the animation never reaches
+    // 1 before the next swap, producing a permanent flicker
+    // through to the pampas background. We want the initial reveal
+    // animation but no per-frame retrigger, so add the class only
+    // on the first paint.
+    if (!_firstPaintDone) {
+      wrap.classList.add("fade-in");
+      _firstPaintDone = true;
+    }
+    wrap.appendChild(imported);
+    host.replaceChildren(wrap);
+    return true;
+  } catch (err) {
+    console.error("paintSvg threw:", err, "head:", svgString.slice(0, 200));
+    return false;
+  }
+}
+
+/** Clear the hero canvas + return the page to its idle layout.
+ *
+ *  Used when the session currently rendered in the hero has been
+ *  saved to the garden (and is therefore also showing as a card in
+ *  the grid). Without this the canvas keeps painting the final
+ *  state of the just-saved session -- visible duplicate.
+ */
+function forceHeroIdle() {
+  cachedState = null;
+  lastIdle = true;
+  if (document.body) {
+    document.body.classList.add("idle");
+    document.body.classList.remove("live");
+  }
+  if ($banner) {
+    $banner.classList.remove("disconnected");
+    $banner.textContent = "waiting for Claude Code activity";
+  }
+  if ($host) {
+    // Clear stale tree so toggling back to live doesn't flash the
+    // old SVG before the new one arrives. The idle visual is the
+    // #idle-hero panel (CSS swap on body.live) -- no placeholder
+    // copy is needed inside the (now-hidden) canvas-host.
+    $host.replaceChildren();
+  }
+  // Reset the tool-stats panel so a stale session's counts don't
+  // linger across the transition.
+  renderToolStats({}, 0);
+  // Reset _firstPaintDone so the next real session's canvas fades
+  // in instead of jumping in.
+  _firstPaintDone = false;
+}
+
+function applyPayload(p) {
+  // First-frame side effects, run unconditionally. The fact that a
+  // snapshot/state payload arrived at all proves the SSE stream is
+  // live -- drop the "connecting…" / disconnected styling regardless
+  // of whether we process the payload body below. Without this the
+  // banner sat on "connecting…" forever on the main page when the
+  // daemon's cached state was a now-saved session (dedup gate
+  // dropped the snapshot, banner never updated).
+  ready = true;
+  if ($banner) $banner.classList.remove("disconnected");
+  // Detect "session just ended" -- non-null → null transition of
+  // the server-reported live_session_id. Triggers an immediate
+  // /api/garden refresh so the just-finished session card lands
+  // in the grid without the user waiting for the 30s poll.
+  const incomingLive = (p && typeof p.live_session_id !== "undefined")
+    ? p.live_session_id : null;
+  if (lastLiveSessionId && !incomingLive && !replaySessionId) {
+    // Pull the latest grid so the freshly-saved session appears.
+    loadGarden();
+  }
+  lastLiveSessionId = incomingLive;
+  // Dedup gate: if the payload's session is already a card in the
+  // garden grid, the hero would just duplicate that card's
+  // thumbnail with the same final tree. The daemon doesn't push an
+  // explicit idle frame on SessionEnd, so the broadcaster's last
+  // state for a just-saved session keeps arriving on snapshot
+  // reconnects (and any subsequent fan-out). Force-idle so the
+  // banner reads "waiting…" and the canvas clears.
+  if (p.state && p.state.session_id &&
+      gardenSessionIds.has(p.state.session_id)) {
+    forceHeroIdle();
+    return;
+  }
+  cachedState = p.state || null;
+  lastIdle = !!p.idle;
+  lastProjectRoot = p.project_root || "";
+  lastEventName = p.event_name || "";
+  if (typeof p.seconds_ago === "number" && p.ts) {
+    lastEventEpochMs = p.ts - p.seconds_ago * 1000;
+  }
+  ready = true;
+  renderToolStats(p.tool_counts || {}, p.error_count || 0);
+  // Toggle the body class so the page layout shifts when a session
+  // starts (live takes hero size, garden compresses) and back when
+  // it ends. We treat `replay` payloads as "live" so the canvas
+  // still gets the hero treatment inside /replay/<id>.
+  if (document.body) {
+    document.body.classList.toggle("idle", lastIdle);
+    document.body.classList.toggle("live", !lastIdle);
+  }
+  if ($banner) {
+    $banner.classList.remove("disconnected");
+    if (p.banner) {
+      $banner.textContent = p.banner;
+    } else if (lastIdle) {
+      $banner.textContent = "waiting for Claude Code activity";
+    } else {
+      $banner.textContent = "live";
+    }
+  }
+  // Cache both theme variants so the toggle can repaint without
+  // re-fetching. Falls back to `svg` if the server didn't include
+  // the split (older daemon talking to a newer page, or vice-versa).
+  cachedSvgLight = p.svg_light || p.svg || null;
+  cachedSvgDark  = p.svg_dark  || p.svg || null;
+  const svgForTheme = isDarkTheme() ? cachedSvgDark : cachedSvgLight;
+  if (svgForTheme && $host) {
+    const ok = paintSvg(svgForTheme, $host);
+    if (debugMode) {
+      console.log("[bcc-debug] paintSvg →", ok ? "ok" : "FAILED",
+        "svg_len=" + svgForTheme.length,
+        "theme=" + (isDarkTheme() ? "dark" : "light"),
+        "host_children=" + $host.children.length);
+    }
+  }
+  updateLiveFooter(p);
+}
+
+function updateLiveFooter(p) {
+  if (p && p.state) {
+    const st = p.state;
+    if ($session) $session.textContent = (st.session_id || "--").slice(0, 8);
+    if ($theme)   $theme.textContent = st.theme || "--";
+    if ($events)  $events.textContent = String(st.event_count ?? 0);
+    if ($last)    $last.textContent = lastEventName || "--";
+    if ($branches)$branches.textContent = String(st.file_branch_count ?? 0);
+    if ($status) {
+      if (lastEventEpochMs) {
+        const secs = Math.max(0, Math.round((Date.now() - lastEventEpochMs) / 1000));
+        $status.textContent = secs < 5 ? "just now" : `${secs}s ago`;
+      } else {
+        $status.textContent = "live";
+      }
+    }
+  } else if (lastIdle || ready) {
+    if ($session) $session.textContent = "--";
+    if ($theme)   $theme.textContent = "--";
+    if ($events)  $events.textContent = "0";
+    if ($last)    $last.textContent = "--";
+    if ($branches)$branches.textContent = "0";
+    if ($status) {
+      $status.textContent = lastProjectRoot
+        ? `waiting for Claude Code activity in ${lastProjectRoot}`
+        : "waiting for Claude Code activity";
+    }
+  }
+}
+
+const replayMatch = /^\/replay\/([^\/]+)/.exec(window.location.pathname);
+const urlParams = new URLSearchParams(window.location.search);
+const replaySessionId = replayMatch ? decodeURIComponent(replayMatch[1]) : null;
+
+// ``?debug=1`` flips on per-frame ``[bcc-debug] frame:`` logs. But
+// crucially, we ALSO emit a small set of **unconditional** logs so
+// we can tell at a glance whether the script ran, what debugMode
+// resolved to, and whether SSE frames are arriving -- even when
+// ``?debug=1`` is OFF or when its parsing itself is broken (which
+// is how we got here: ``?debug=1`` in the URL but no console
+// output, the previous round trip).
+const debugMode = urlParams.get("debug") === "1";
+
+// Always-on diagnostic line, prints once at script init.
+console.log(
+  "[bcc-debug] page loaded -- debugMode=" + debugMode
+  + " search=" + JSON.stringify(window.location.search)
+  + " pathname=" + JSON.stringify(window.location.pathname)
+  + " replaySessionId=" + JSON.stringify(replaySessionId)
+);
+
+// One-shot "first SSE frame arrived" log so we can tell whether
+// frames are reaching JS at all. Independent of ``debugMode``.
+let _firstFrameLogged = false;
+
+/** Show a user-visible render error in the banner.
+ *
+ *  Replaces the previous "swallow into console.error" pattern that
+ *  made commit 972cec0's canvas-blank bug invisible without
+ *  DevTools open. If applyPayload throws mid-frame now, the user
+ *  sees the failure immediately instead of staring at a blank
+ *  canvas wondering why.
+ */
+function surfaceRenderError(err) {
+  console.error("[bcc] render error:", err);
+  if ($banner) {
+    $banner.textContent = "render error -- open DevTools console";
+    $banner.classList.add("disconnected");
+  }
+}
+
+/** One-liner diagnostic for ``?debug=1`` mode. */
+function _debugLogFrame(name, p, dataBytes) {
+  const stateKeys = p && p.state ? Object.keys(p.state).length : 0;
+  const svgLen = (p && p.svg && p.svg.length) || 0;
+  const toolCounts = (p && p.tool_counts) || {};
+  const nonZeroTools = Object.keys(toolCounts).filter((k) => toolCounts[k] > 0).length;
+  console.log(
+    `[bcc-debug] ${name}: data=${dataBytes}B svg=${svgLen}B `
+    + `state_keys=${stateKeys} tool_counts(nonzero)=${nonZeroTools} `
+    + `idle=${p.idle} replay_idx=${p.replay_idx}`
+  );
+}
+
+// ---- Replay controller -------------------------------------------
+//
+// State: speed, playing, idx (last received event index), total (from
+// the server's replay_total field). The EventSource is opened with
+// the current ``speed`` and ``from`` params; pause closes it; resume
+// re-opens it with the saved idx.
+
+const $rc       = document.getElementById("replay-controls");
+const $rcToggle = /** @type {HTMLButtonElement|null} */ (document.getElementById("rc-toggle"));
+const $rcSpeed  = /** @type {HTMLSelectElement|null} */ (document.getElementById("rc-speed"));
+const $rcBar    = document.getElementById("rc-bar");
+const $rcCount  = document.getElementById("rc-counter");
+const $rcShare  = document.getElementById("rc-share");
+const $rcShareM = document.getElementById("rc-share-msg");
+
+let replaySpeed = parseFloat(urlParams.get("speed") || "1") || 1;
+let replayIdx = parseInt(urlParams.get("t") || "0", 10) || 0;
+let replayTotal = 0;
+let replayPlaying = true;
+let replayDone = false;
+let evt = /** @type {EventSource | null} */ (null);
+
+function openStream() {
+  if (evt) evt.close();
+  let url;
+  if (replaySessionId) {
+    const p = new URLSearchParams();
+    p.set("speed", String(replaySpeed));
+    if (replayIdx > 0) p.set("from", String(replayIdx));
+    if (currentTheme && currentTheme !== "auto") p.set("theme", currentTheme);
+    url = `/api/replay/${encodeURIComponent(replaySessionId)}?${p.toString()}`;
+  } else {
+    const p = new URLSearchParams();
+    if (currentTheme && currentTheme !== "auto") p.set("theme", currentTheme);
+    const qs = p.toString();
+    url = qs ? `/events?${qs}` : "/events";
+  }
+  evt = new EventSource(url);
+  evt.addEventListener("replay_done", () => {
+    replayDone = true;
+    replayPlaying = false;
+    // Close the EventSource explicitly. Without this, the browser
+    // sees the server's write_eof as an unexpected disconnect and
+    // auto-reconnects to the same URL -- which was built with
+    // replayIdx=0, so the server obliges and restarts the replay
+    // from event 0, indefinitely.
+    if (evt) { evt.close(); evt = null; }
+    if ($rcToggle) $rcToggle.textContent = "↺";
+    if ($banner) $banner.textContent += " · done";
+    updateReplayControls();
+  });
+  evt.addEventListener("snapshot", (e) => {
+    try {
+      const data = /** @type {MessageEvent<string>} */ (e).data;
+      const p = JSON.parse(data);
+      if (!_firstFrameLogged) {
+        _firstFrameLogged = true;
+        console.log("[bcc-debug] first SSE frame received (snapshot) -- " + data.length + "B");
+      }
+      if (debugMode) _debugLogFrame("snapshot", p, data.length);
+      applyPayload(p);
+    } catch (err) {
+      surfaceRenderError(err);
+    }
+  });
+  evt.addEventListener("state", (e) => {
+    try {
+      const data = /** @type {MessageEvent<string>} */ (e).data;
+      const p = JSON.parse(data);
+      if (typeof p.replay_idx === "number") replayIdx = p.replay_idx + 1;
+      if (typeof p.replay_total === "number") replayTotal = p.replay_total;
+      updateReplayControls();
+      if (!_firstFrameLogged) {
+        _firstFrameLogged = true;
+        console.log("[bcc-debug] first SSE frame received (state) -- " + data.length + "B");
+      }
+      if (debugMode) _debugLogFrame("state", p, data.length);
+      applyPayload(p);
+    } catch (err) {
+      surfaceRenderError(err);
+    }
+  });
+  evt.addEventListener("error", () => {
+    if ($banner) {
+      $banner.textContent = "disconnected -- will retry…";
+      $banner.classList.add("disconnected");
+    }
+    // In replay mode, an immediate error before any state frame
+    // arrived almost always means the session row doesn't exist in
+    // the garden yet (still being written to disk). Check via the
+    // session API and surface a friendly message rather than letting
+    // the playback controls sit there silently unresponsive.
+    if (replaySessionId && replayIdx === 0 && !replayDone) {
+      maybeExplainReplayFailure();
+    }
+  });
+}
+
+/** Distinguish "session not in garden yet" from a transient
+ *  network blip and tell the user which it is. */
+async function maybeExplainReplayFailure() {
+  try {
+    const resp = await fetch(`/api/session/${encodeURIComponent(replaySessionId)}`);
+    if (resp.status === 404 && $host) {
+      // Build the "session live, refresh later" placeholder inline.
+      $host.innerHTML = `
+        <div style="
+          display: flex; flex-direction: column; align-items: center;
+          justify-content: center; height: 100%; text-align: center;
+          padding: 24px; color: var(--bcc-ink-soft);">
+          <svg width="64" height="64" viewBox="0 0 24 24" style="color: var(--bcc-crail-deep); margin-bottom: 16px;">
+            <use href="#ti-alert-triangle"/>
+          </svg>
+          <div style="font-size: 18px; font-weight: 600; color: var(--bcc-ink); letter-spacing: -0.02em;">
+            Session is still being written
+          </div>
+          <div style="margin-top: 8px; font-size: 13px; max-width: 420px; line-height: 1.5;">
+            Replay needs a saved row in the garden, and this session
+            hasn't completed yet. Watch growth live on the
+            <a href="/" style="color: var(--bcc-crail); text-decoration: none; border-bottom: 1px solid currentColor;">home page</a>,
+            or come back after the session ends.
+          </div>
+        </div>`;
+      // Also disable the playback controls -- clicking them at this
+      // point would just churn the SSE connection.
+      const $rcEl = document.getElementById("replay-controls");
+      if ($rcEl) {
+        $rcEl.style.opacity = "0.4";
+        $rcEl.style.pointerEvents = "none";
+        $rcEl.title = "Session is still being written — replay disabled";
+      }
+      if (evt) { evt.close(); evt = null; }
+      if ($banner) $banner.textContent = "session not saved yet";
+    }
+  } catch {
+    // Network unreachable; the existing "disconnected -- will retry…"
+    // copy already covers that case.
+  }
+}
+
+function updateReplayControls() {
+  if (!$rc) return;
+  if (!replaySessionId) { $rc.hidden = true; return; }
+  $rc.hidden = false;
+  if ($rcBar instanceof HTMLElement) {
+    const pct = replayTotal > 0 ? Math.min(100, (replayIdx / replayTotal) * 100) : 0;
+    $rcBar.style.width = `${pct}%`;
+  }
+  if ($rcCount) $rcCount.textContent = `${replayIdx} / ${replayTotal}`;
+  if ($rcSpeed && parseFloat($rcSpeed.value) !== replaySpeed) {
+    $rcSpeed.value = String(replaySpeed);
+  }
+  if ($rcToggle) {
+    $rcToggle.textContent = replayDone ? "↺" : (replayPlaying ? "⏸" : "▶");
+  }
+}
+
+function togglePlayback() {
+  if (replayDone) {
+    // Restart from the beginning.
+    replayIdx = 0;
+    replayDone = false;
+    replayPlaying = true;
+    openStream();
+  } else if (replayPlaying) {
+    replayPlaying = false;
+    if (evt) { evt.close(); evt = null; }
+  } else {
+    replayPlaying = true;
+    openStream();
+  }
+  updateReplayControls();
+}
+
+if ($rcToggle) $rcToggle.addEventListener("click", togglePlayback);
+if ($rcSpeed)  $rcSpeed.addEventListener("change", () => {
+  replaySpeed = parseFloat($rcSpeed.value) || 1;
+  if (replayPlaying) openStream();
+  updateReplayControls();
+});
+if ($rcShare) $rcShare.addEventListener("click", async () => {
+  const p = new URLSearchParams();
+  if (replaySpeed !== 1) p.set("speed", String(replaySpeed));
+  if (replayIdx > 0)     p.set("t", String(replayIdx));
+  const qs = p.toString();
+  const link = `${window.location.origin}/replay/${encodeURIComponent(replaySessionId)}${qs ? "?" + qs : ""}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    if ($rcShareM) {
+      $rcShareM.classList.add("show");
+      setTimeout(() => $rcShareM && $rcShareM.classList.remove("show"), 1400);
+    }
+  } catch (err) { console.error("clipboard failed", err); }
+});
+
+// Auto-hide the controls bar after 3s of idle mouse; show again on
+// mouse move. Pure polish -- fades out so the tree gets all the
+// attention.
+let idleTimer = /** @type {number | null} */ (null);
+function showControls() {
+  if (!$rc) return;
+  $rc.classList.remove("hidden");
+  if (idleTimer !== null) window.clearTimeout(idleTimer);
+  idleTimer = window.setTimeout(() => $rc && $rc.classList.add("hidden"), 3000);
+}
+if (replaySessionId) {
+  showControls();
+  document.addEventListener("mousemove", showControls);
+  // Hide the garden grid + hero band when we're in replay mode --
+  // the user clicked into one specific session and doesn't need
+  // the browser distraction. The hero band has `display: grid`
+  // in CSS, which overrides the UA `[hidden] { display: none }`
+  // rule -- so `.hidden = true` left an empty band visible at the
+  // bottom of /replay/<id>. Remove it from the DOM instead.
+  const $garden = document.getElementById("garden");
+  if ($garden) $garden.remove();
+  const $hero = document.getElementById("garden-hero");
+  if ($hero) $hero.remove();
+  // Stretch the canvas to fill the viewport.
+  const $host2 = document.getElementById("canvas-host");
+  if ($host2 instanceof HTMLElement) {
+    $host2.style.height = "calc(100vh - 110px)";
+    $host2.style.maxHeight = "none";
+  }
+} else if ($rc) {
+  // Main page (no replaySessionId): the playback pill has nothing
+  // to control -- live sessions aren't "replayable" while they're
+  // growing. `#replay-controls` declares `display: flex` in CSS,
+  // which overrides the `hidden` attribute the HTML ships with, so
+  // it would render as an empty disabled pill above the page. Yank
+  // it from the DOM instead.
+  $rc.remove();
+}
+
+openStream();
+updateReplayControls();
+setInterval(() => updateLiveFooter({ state: cachedState }), 1000);
+
+// ---- Garden grid --------------------------------------------------
+
+/** @typedef {{
+ *   id: string, theme: string, started_at: number, ended_at: number | null,
+ *   project_path: string, detected_language: string,
+ *   tool_call_count: number, error_count: number,
+ *   file_branch_count: number, status: string
+ * }} SessionCard
+ */
+
+/** Format a millisecond timestamp as a relative-time string. */
+function fmtAgo(ms) {
+  const secs = Math.max(0, (Date.now() - ms) / 1000);
+  if (secs < 60)   return `${Math.round(secs)}s ago`;
+  if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+  if (secs < 86400)return `${Math.round(secs / 3600)}h ago`;
+  return `${Math.round(secs / 86400)}d ago`;
+}
+
+/** Format a duration in ms as a short label. */
+function fmtDuration(startMs, endMs) {
+  if (!endMs) return "active";
+  const secs = Math.max(0, (endMs - startMs) / 1000);
+  if (secs < 60)   return `${Math.round(secs)}s`;
+  if (secs < 3600) return `${Math.round(secs / 60)}m`;
+  return `${(secs / 3600).toFixed(1)}h`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => /** @type {Record<string,string>} */ ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[c]);
+}
+
+/**
+ * Render the garden grid from an array of session rows.
+ *
+ *  @param {SessionCard[]} rows
+ */
+function renderGarden(rows) {
+  if (!$grid || !$empty) return;
+  // Refresh the dedup set BEFORE rendering so a concurrent
+  // applyPayload can't slip a duplicate through.
+  gardenSessionIds = new Set(rows.map(r => r.id));
+  // If the hero is currently painting a session that's now in the
+  // garden, kick the hero to idle. Catches the SessionEnd → save →
+  // garden-poll transition cleanly.
+  if (cachedState && cachedState.session_id &&
+      gardenSessionIds.has(cachedState.session_id)) {
+    forceHeroIdle();
+  }
+  if ($sessCount) $sessCount.textContent = `${rows.length} session${rows.length === 1 ? "" : "s"}`;
+  if (rows.length === 0) {
+    $grid.innerHTML = "";
+    $empty.hidden = false;
+    return;
+  }
+  $empty.hidden = true;
+  // Populate the language filter on first non-empty render so the
+  // user picks from the actual set of themes they have.
+  populateLanguageFilter(rows);
+  const frag = document.createDocumentFragment();
+  // First saved (non-live) card gets the "latest" badge -- a visual
+  // entry point so users returning to the garden have an obvious
+  // "start here" target. Live cards are skipped because they aren't
+  // replayable yet (no garden row until SessionEnd).
+  let latestBadgePlaced = false;
+  const todayStr = new Date().toDateString();
+  for (const r of rows) {
+    const isLive = !r.ended_at;
+    const el = document.createElement(isLive ? "div" : "a");
+    el.className = isLive ? "card disabled" : "card";
+    if (isLive) {
+      el.setAttribute("title", "session is still growing -- finishes when Claude Code ends");
+      el.setAttribute("aria-disabled", "true");
+    } else {
+      /** @type {HTMLAnchorElement} */ (el).href = `/replay/${encodeURIComponent(r.id)}`;
+    }
+    const isLatest = !latestBadgePlaced && !isLive;
+    if (isLatest) latestBadgePlaced = true;
+    const isToday = new Date(r.started_at).toDateString() === todayStr;
+    const errBadge = r.error_count > 0
+      ? `<span class="err" title="${r.error_count} error${r.error_count === 1 ? "" : "s"}">`
+        + `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ti-alert-triangle"/></svg>`
+        + `${r.error_count}</span>`
+      : "";
+    const thumbQs = isDarkTheme() ? "?mode=dark" : "";
+    el.innerHTML = `
+      ${isLatest ? '<span class="latest-badge">latest</span>' : ""}
+      <div class="thumb">
+        <img alt="thumbnail" loading="lazy" src="/api/session/${encodeURIComponent(r.id)}/svg${thumbQs}">
+      </div>
+      <div class="meta">
+        <div class="row">
+          <span class="sid">${escapeHtml(r.id.slice(0, 8))}</span>
+          <span class="theme">${escapeHtml(r.theme || r.detected_language || "--")}</span>
+        </div>
+        <div class="row">
+          <span class="stats">
+            <span>${r.tool_call_count} events</span>
+            ${errBadge}
+            <span>${escapeHtml(fmtDuration(r.started_at, r.ended_at))}</span>
+          </span>
+          <span class="stats${isToday ? " today" : ""}">${escapeHtml(fmtAgo(r.started_at))}</span>
+        </div>
+        <div class="project" title="${escapeHtml(r.project_path)}">${escapeHtml(r.project_path)}</div>
+      </div>`;
+    frag.appendChild(el);
+  }
+  $grid.replaceChildren(frag);
+  // <img src="...svg"> works but loses any inline styles; some
+  // browsers reject scripts/links in linked SVGs. Our SVGs are
+  // self-contained so this is fine.
+}
+
+function populateLanguageFilter(rows) {
+  if (!$fLang) return;
+  const seen = new Set(Array.from($fLang.options).map((o) => o.value));
+  const langs = new Set(rows.map((r) => r.detected_language || r.theme).filter(Boolean));
+  for (const l of [...langs].sort()) {
+    if (!seen.has(l)) {
+      const opt = document.createElement("option");
+      opt.value = l;
+      opt.textContent = l;
+      $fLang.appendChild(opt);
+    }
+  }
+}
+
+/** Pretty-print a duration in seconds as "12h 34m" / "≈ 5.3 days". */
+function fmtTotalDuration(secs) {
+  if (!secs || secs <= 0) return { primary: "0h", secondary: "no sessions yet" };
+  const hours = secs / 3600;
+  if (hours < 1) {
+    const mins = Math.round(secs / 60);
+    return { primary: `${mins}m`, secondary: "" };
+  }
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  const primary = m > 0 ? `${h}h ${m}m` : `${h}h`;
+  const days = hours / 24;
+  const secondary = days >= 1 ? `≈ ${days.toFixed(1)} days` : "";
+  return { primary, secondary };
+}
+
+async function loadHeroStats() {
+  try {
+    const resp = await fetch("/api/garden/stats");
+    if (!resp.ok) return;
+    const s = await resp.json();
+    const $totalV = document.getElementById("hs-total-value");
+    const $totalS = document.getElementById("hs-total-secondary");
+    const $sessV  = document.getElementById("hs-sessions-value");
+    const $sessS  = document.getElementById("hs-sessions-secondary");
+    const $strV   = document.getElementById("hs-streak-value");
+    const $strS   = document.getElementById("hs-streak-secondary");
+    const $total  = $totalV ? $totalV.closest(".hero-stat") : null;
+    const $sess   = $sessV  ? $sessV.closest(".hero-stat")  : null;
+    const $str    = $strV   ? $strV.closest(".hero-stat")   : null;
+    const dur = fmtTotalDuration(s.total_seconds || 0);
+    if ($totalV) $totalV.textContent = dur.primary;
+    if ($totalS) $totalS.textContent = dur.secondary || " ";
+    if ($total)  $total.classList.toggle("empty", (s.total_seconds || 0) === 0);
+
+    if ($sessV) $sessV.textContent = String(s.sessions_count || 0);
+    if ($sessS) {
+      const m = s.sessions_this_month || 0;
+      $sessS.textContent = m > 0 ? `this month: ${m}` : " ";
+    }
+    if ($sess) $sess.classList.toggle("empty", (s.sessions_count || 0) === 0);
+
+    const streak = s.streak_days || 0;
+    if ($strV) $strV.textContent = streak === 0 ? "0" : (streak === 1 ? "1 day" : `${streak} days`);
+    if ($strS) {
+      if (streak === 0) $strS.textContent = "start one today";
+      else if (streak === 1) $strS.textContent = "keep it going";
+      else $strS.textContent = "keep it going";
+    }
+    if ($str) $str.classList.toggle("empty", streak === 0);
+  } catch (err) {
+    console.error("loadHeroStats failed", err);
+  }
+}
+
+async function loadGarden() {
+  try {
+    const params = new URLSearchParams();
+    if ($fSearch && $fSearch.value) params.set("q", $fSearch.value);
+    if ($fLang && $fLang.value) params.set("language", $fLang.value);
+    if ($fProj && $fProj.value) params.set("project_path", $fProj.value);
+    const url = "/api/garden" + (params.toString() ? "?" + params.toString() : "");
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`/api/garden returned ${resp.status}`);
+    const rows = /** @type {SessionCard[]} */ (await resp.json());
+    renderGarden(rows);
+  } catch (err) {
+    console.error("loadGarden failed", err);
+  }
+}
+
+let filterTimer = null;
+function scheduleFilter() {
+  if (filterTimer !== null) clearTimeout(filterTimer);
+  filterTimer = window.setTimeout(loadGarden, 180);
+}
+if ($fSearch) $fSearch.addEventListener("input", scheduleFilter);
+if ($fLang)   $fLang.addEventListener("change", loadGarden);
+if ($fProj)   $fProj.addEventListener("input", scheduleFilter);
+if ($fClear)  $fClear.addEventListener("click", () => {
+  if ($fSearch) $fSearch.value = "";
+  if ($fLang)   $fLang.value = "";
+  if ($fProj)   $fProj.value = "";
+  loadGarden();
+});
+
+// Initial load + refresh every 30s so newly-saved sessions appear
+// without a hard reload. Skipped in replay mode -- the user is
+// focused on one specific session there.
+if (!replaySessionId) {
+  loadGarden();
+  loadHeroStats();
+  setInterval(loadGarden, 30000);
+  setInterval(loadHeroStats, 30000);
+}
+
+// ---- Theme toggle ------------------------------------------------
+//
+// The inline script in <head> already set `data-theme` from
+// localStorage before CSS ran (no flash of wrong theme). This
+// wires the click handler: explicit toggle persists to localStorage
+// and wins over the OS preference forever after.
+const $themeToggle = document.getElementById("theme-toggle");
+if ($themeToggle) {
+  $themeToggle.addEventListener("click", () => {
+    const html = document.documentElement;
+    const explicit = html.getAttribute("data-theme");
+    const osDark = window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const current = explicit || (osDark ? "dark" : "light");
+    const next = current === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    try { localStorage.setItem("bcc-theme", next); }
+    catch (_) { /* private mode -- toggle just lasts the session */ }
+    // Repaint the hero canvas with the matching SVG variant. Both
+    // were already shipped in the latest SSE payload -- no reconnect
+    // needed, no server round-trip.
+    const svg = next === "dark" ? cachedSvgDark : cachedSvgLight;
+    if (svg && $host) paintSvg(svg, $host);
+    // Refresh the garden grid so thumbnail <img>s pick up the dark
+    // variant from the server (via `?mode=dark` on the src URL).
+    if (!replaySessionId) loadGarden();
+  });
+}
+
+// ---- Theme override picker -------------------------------------
+//
+// Click handlers for the 12 silhouette buttons + the auto button +
+// the "make default" affordance. Picking a theme:
+//   1. updates `currentTheme` (module state),
+//   2. patches the URL (`?theme=sakura`) via `history.replaceState`
+//      so F5 keeps the choice and the URL is shareable,
+//   3. reconnects the SSE stream so the daemon re-renders for the
+//      new theme (the server reads `?theme=` on /events and
+//      /api/replay).
+// "auto" reverts to the project's auto-detected theme.
+
+const $themeBtns = document.querySelectorAll(".theme-btn");
+const $themeDefaultBtn = document.getElementById("theme-make-default");
+
+function _syncThemePickerUI() {
+  $themeBtns.forEach((btn) => {
+    btn.classList.toggle(
+      "active",
+      /** @type {HTMLElement} */ (btn).dataset.theme === currentTheme,
+    );
+  });
+  if ($themeDefaultBtn) {
+    // The button only makes sense for non-auto picks AND when the
+    // current pick isn't already the saved default.
+    const savedDefault = _readDefaultTheme();
+    const showButton =
+      currentTheme !== "auto" && savedDefault !== currentTheme;
+    /** @type {HTMLElement} */ ($themeDefaultBtn).hidden = !showButton;
+    $themeDefaultBtn.classList.remove("confirmed");
+    $themeDefaultBtn.textContent = "make default";
+  }
+}
+
+function _patchThemeInUrl(theme) {
+  const url = new URL(window.location.href);
+  if (theme && theme !== "auto") {
+    url.searchParams.set("theme", theme);
+  } else {
+    url.searchParams.delete("theme");
+  }
+  window.history.replaceState({}, "", url.toString());
+}
+
+function pickTheme(theme) {
+  if (!_KNOWN_THEMES.includes(theme)) return;
+  currentTheme = theme;
+  _patchThemeInUrl(theme);
+  _syncThemePickerUI();
+  // Reconnect the SSE stream so the daemon re-renders for the new
+  // theme. Cheap on loopback (a few ms); avoids re-fetching the
+  // page or maintaining a separate render endpoint.
+  openStream();
+  // Refresh the grid so thumbnails reflect the new theme via
+  // `?theme=` on the <img src>. Server's renderer-override
+  // accepts the same param shape on the thumbnail endpoint.
+  if (!replaySessionId) loadGarden();
+}
+
+$themeBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const theme = /** @type {HTMLElement} */ (btn).dataset.theme;
+    pickTheme(theme || "auto");
+  });
+});
+
+if ($themeDefaultBtn) {
+  $themeDefaultBtn.addEventListener("click", () => {
+    try { localStorage.setItem("bcc-default-theme", currentTheme); }
+    catch (_) { /* private mode -- just lasts the session */ }
+    $themeDefaultBtn.classList.add("confirmed");
+    $themeDefaultBtn.textContent = "default saved";
+    // Hide on next picker change; flag stays "confirmed" until then.
+  });
+}
+
+_syncThemePickerUI();
+</script>
+</body>
+</html>

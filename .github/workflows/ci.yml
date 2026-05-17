@@ -1,0 +1,78 @@
+name: ci
+
+# Lint + type-check + tests across the supported Python versions on
+# every OS we promise to work on. Benchmarks are run as gates so
+# regressions in cold-start latency or fsync cost surface immediately.
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["v*"]  # release workflow handles tags
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Pin Python ${{ matrix.python }}
+        run: uv python install ${{ matrix.python }}
+
+      - name: Sync project
+        run: uv sync --all-extras
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests scripts
+
+      - name: Type-check (mypy --strict)
+        run: uv run mypy src/bonsai_cc
+
+      - name: Tests
+        env:
+          # The fsync probe in `doctor` and the runner tests need a
+          # writable sandbox; CI runners default home is fine but pin
+          # for clarity.
+          PYTHONUTF8: "1"
+        run: uv run pytest -ra
+
+  build:
+    name: build sdist + wheel
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - name: Build
+        run: uv build
+      - name: Inspect
+        run: |
+          ls -la dist/
+          uv run --with twine twine check dist/*
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7

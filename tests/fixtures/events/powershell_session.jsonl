@@ -1,0 +1,6 @@
+{"ts":1715800000000,"idx":0,"raw":{"session_id":"fixture-powershell-001","hook_event_name":"SessionStart","source":"startup","cwd":"D:\\proj"}}
+{"ts":1715800001000,"idx":1,"raw":{"session_id":"fixture-powershell-001","hook_event_name":"PostToolUse","tool_name":"PowerShell","tool_input":{"command":"Get-ChildItem"},"cwd":"D:\\proj"}}
+{"ts":1715800002000,"idx":2,"raw":{"session_id":"fixture-powershell-001","hook_event_name":"PostToolUse","tool_name":"PowerShell","tool_input":{"command":"python hello.py"},"cwd":"D:\\proj"}}
+{"ts":1715800003000,"idx":3,"raw":{"session_id":"fixture-powershell-001","hook_event_name":"PostToolUse","tool_name":"PowerShell","tool_input":{"command":"python -m pytest"},"cwd":"D:\\proj"}}
+{"ts":1715800004000,"idx":4,"raw":{"session_id":"fixture-powershell-001","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls -la"},"cwd":"D:\\proj\\src"}}
+{"ts":1715800005000,"idx":5,"raw":{"session_id":"fixture-powershell-001","hook_event_name":"PostToolUse","tool_name":"PowerShell","tool_input":{"command":"echo hi"},"cwd":"D:\\proj"}}

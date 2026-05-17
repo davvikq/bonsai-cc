@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# venv / uv
+.venv/
+.uv/
+venv/
+ENV/
+env/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# bonsai-cc local state (don't ever commit a user's garden / journals)
+.bonsai-cc/
+
+# Stamped at wheel-build time by hatch_build.py — not source.
+src/bonsai_cc/_build_info.py
+
+# Claude Code local settings (the shared .claude/settings.json is committed)
+.claude/settings.local.json
