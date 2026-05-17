@@ -17,6 +17,13 @@ versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 - Friendlier error when `--port N` collides with a port already in
   use, instead of a raw `OSError`.
 
+## [0.2.5] — 2026-05-17
+
+- `bonsai-cc` (no args) no longer re-prompts to install the hook
+  in every project when ``install-hook --global`` was already run.
+  The default flow now checks both project-level and global
+  ``settings.json`` before asking.
+
 ## [0.2.4] — 2026-05-17
 
 - `bonsai-cc --version` now reads from package metadata via
@@ -260,7 +267,8 @@ Textual renderer → SQLite garden.
 - Determinism, architectural-seam, raw-first-durability, and
   hook-client-static-guards gates.
 
-[Unreleased]: https://github.com/davvikq/bonsai-cc/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/davvikq/bonsai-cc/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/davvikq/bonsai-cc/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/davvikq/bonsai-cc/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/davvikq/bonsai-cc/compare/v0.2.1...v0.2.3
 [0.2.1]: https://github.com/davvikq/bonsai-cc/compare/v0.2.0...v0.2.1

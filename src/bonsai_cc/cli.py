@@ -154,7 +154,13 @@ def _default_flow(
     """
     log = get_logger("bonsai_cc.cli.default")
     project_root = find_project_root(Path.cwd())
-    already_installed = _hook_installed_at(Scope.PROJECT, project_root)
+    # Honour a global install: if the user ran ``install-hook --global``,
+    # the hook fires in every Claude Code session everywhere, so the
+    # default-flow shouldn't prompt to install it again per-project.
+    already_installed = (
+        _hook_installed_at(Scope.PROJECT, project_root)
+        or _hook_installed_at(Scope.GLOBAL, Path.home())
+    )
 
     if already_installed:
         log.info("default_flow_hook_already_installed", project=str(project_root))
