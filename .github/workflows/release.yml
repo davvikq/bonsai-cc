@@ -53,7 +53,7 @@ jobs:
       - run: uv python install 3.12
       - run: uv build
       - run: uv run --with twine twine check dist/*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
