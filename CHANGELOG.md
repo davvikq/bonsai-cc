@@ -17,6 +17,16 @@ versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 - Friendlier error when `--port N` collides with a port already in
   use, instead of a raw `OSError`.
 
+## [0.2.6] — 2026-05-22
+
+- Web view no longer returns `ERR_CONNECTION_REFUSED` on startup when
+  the journals directory has accumulated many sessions. The HTTP
+  server now binds **before** the journal watcher replays any backlog,
+  so the browser connects instantly and streams catch-up over SSE.
+- Startup catch-up scan skips journals for sessions already finalised
+  (`complete`/`recovered`) in the garden instead of re-reading and
+  re-publishing their full event backlog through the live runner.
+
 ## [0.2.5] — 2026-05-17
 
 - `bonsai-cc` (no args) no longer re-prompts to install the hook

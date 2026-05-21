@@ -8,6 +8,7 @@ old lines; the initial scan catches up from byte 0 of each file.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from typing import Any
 from watchfiles import Change, awatch
 
 from bonsai_cc.events.bus import EventBus, IngestedEvent
+from bonsai_cc.events.journal import _safe_session_filename
 from bonsai_cc.events.models import parse_event
 from bonsai_cc.log import get_logger
 
@@ -55,6 +57,7 @@ class JournalWatcher:
         bus: EventBus,
         *,
         poll_min_interval_ms: int = 50,
+        skip_session_ids: set[str] | None = None,
     ) -> None:
         self._journals_dir = journals_dir
         self._bus = bus
@@ -62,6 +65,15 @@ class JournalWatcher:
         # idx we'll publish (= number of valid records produced so
         # far). Both advance together.
         self._offsets: dict[Path, tuple[int, int]] = {}
+        # Sanitised filename stems of sessions a previous daemon run
+        # already finalised. The startup catch-up scan seeds these at
+        # EOF instead of replaying their backlog: the runner would
+        # discard the events anyway (it skips completed sessions when
+        # binding), but reading + parsing + publishing a large backlog
+        # first starves the event loop before the HTTP server binds.
+        self._skip_stems: set[str] = {
+            _safe_session_filename(sid) for sid in (skip_session_ids or set())
+        }
         # ``watchfiles`` polling cadence -- milliseconds between
         # change-set yields when nothing is happening. The default
         # (50 ms) is plenty responsive for human-scale event rates.
@@ -110,6 +122,13 @@ class JournalWatcher:
         """
         self._journals_dir.mkdir(parents=True, exist_ok=True)
         for path in sorted(self._journals_dir.glob("*.jsonl")):
+            if path.stem in self._skip_stems:
+                # Already-finalised session: don't replay its backlog.
+                # Seed the offset at EOF so any later append is still
+                # tailed live (completed sessions normally never grow).
+                with contextlib.suppress(OSError):
+                    self._offsets[path] = (path.stat().st_size, 0)
+                continue
             await self._scan_one(path)
 
     async def _handle_changes(self, changes: set[tuple[Change, str]]) -> None:

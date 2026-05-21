@@ -75,7 +75,6 @@ async def run_web_pipeline(
     # files directly with no IPC layer in between.
     bus = get_event_bus()
     journals = JournalRegistry(cfg.journals_dir)
-    watcher = JournalWatcher(cfg.journals_dir, bus)
 
     garden = GardenStore(config=cfg)
     # One-shot migration: pre-fix versions of `install-hook` wrote
@@ -87,6 +86,26 @@ async def run_web_pipeline(
     recovered = recover_orphan_sessions(garden, journals)
     if recovered:
         _log.info("web_pipeline_recovered_orphans", count=recovered)
+
+    # Sessions a previous run already finalised don't need their journal
+    # backlog replayed through the live runner on startup. The runner
+    # would discard those events anyway (GrowthRunner skips completed
+    # sessions when binding), but the watcher would still read + parse +
+    # publish every event first -- with a large accumulated journals dir
+    # that starves the single-threaded event loop long enough that the
+    # HTTP server binds late and the browser sees ERR_CONNECTION_REFUSED.
+    # ``recover_orphan_sessions`` above has already persisted every
+    # on-disk journal, so this set is complete.
+    from bonsai_cc.garden.store import SessionFilter, SessionStatus
+
+    completed_session_ids = {
+        row.id
+        for row in garden.list_sessions(SessionFilter(limit=100_000))
+        if row.status in (SessionStatus.COMPLETE, SessionStatus.RECOVERED)
+    }
+    watcher = JournalWatcher(
+        cfg.journals_dir, bus, skip_session_ids=completed_session_ids
+    )
 
     broadcaster = WebBroadcaster(
         banner=banner,
@@ -112,26 +131,13 @@ async def run_web_pipeline(
     broadcaster.attach_runner(runner)
     await runner.start()
 
-    watcher_task = asyncio.create_task(watcher.run(), name="bonsai-watcher")
-
-    # Optional smoke-test path: feed a recorded journal through the
-    # bus alongside the live watcher. Lets users prove the renderer
-    # works ("bonsai-cc watch --replay tests/fixtures/.../...jsonl")
-    # without starting a Claude Code session. The watcher keeps
-    # listening for real events too, so this composes cleanly.
-    replay_task: asyncio.Task[None] | None = None
-    if replay_path is not None:
-        replay_task = asyncio.create_task(
-            replay_journal_into_bus(replay_path, bus, speed=replay_speed),
-            name="bonsai-replay",
-        )
-        _log.info(
-            "web_pipeline_replay_started",
-            path=str(replay_path),
-            speed=replay_speed,
-        )
-
-    # --- HTTP server ---
+    # --- HTTP server: bind BEFORE wiring up event production ---
+    # The journal watcher's startup catch-up scan (and the optional
+    # replay task) can publish a large backlog onto the bus. Binding
+    # the listening socket first means the browser connects instantly
+    # and streams that backlog over SSE, rather than getting
+    # ERR_CONNECTION_REFUSED while the single-threaded event loop is
+    # still busy replaying history.
     app = build_app(
         broadcaster,
         garden=garden,
@@ -156,6 +162,26 @@ async def run_web_pipeline(
     if open_browser:
         with contextlib.suppress(Exception):
             webbrowser.open(url + browser_path)
+
+    # --- Event production: live watcher + optional replay ---
+    watcher_task = asyncio.create_task(watcher.run(), name="bonsai-watcher")
+
+    # Optional smoke-test path: feed a recorded journal through the
+    # bus alongside the live watcher. Lets users prove the renderer
+    # works ("bonsai-cc watch --replay tests/fixtures/.../...jsonl")
+    # without starting a Claude Code session. The watcher keeps
+    # listening for real events too, so this composes cleanly.
+    replay_task: asyncio.Task[None] | None = None
+    if replay_path is not None:
+        replay_task = asyncio.create_task(
+            replay_journal_into_bus(replay_path, bus, speed=replay_speed),
+            name="bonsai-replay",
+        )
+        _log.info(
+            "web_pipeline_replay_started",
+            path=str(replay_path),
+            speed=replay_speed,
+        )
 
     # --- Wait for stdin 'q' or process termination ---
     stop_event = asyncio.Event()
