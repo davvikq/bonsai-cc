@@ -229,7 +229,6 @@ def _append_locked(journal_path: Path, blob: bytes, deadline: float) -> bool:
                     time.sleep(0.002)
             try:
                 os.write(fd, blob)
-                os.fsync(fd)
             finally:
                 try:
                     # Seek back so we unlock the same byte we locked,
@@ -239,6 +238,15 @@ def _append_locked(journal_path: Path, blob: bytes, deadline: float) -> bool:
                     msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
                 except OSError:
                     pass
+            # fsync OUTSIDE the lock. Holding the byte-range lock across
+            # the fsync serialises every concurrent writer behind one
+            # another's disk flush; under heavy contention (many hooks
+            # firing at once) the tail writers blow the deadline and
+            # abandon their append, silently losing events. The append
+            # itself is already durable to other processes once
+            # ``os.write`` returns -- fsync only adds OS-crash
+            # durability, which doesn't need the lock.
+            os.fsync(fd)
         else:
             # POSIX: O_APPEND atomic write semantics handle the race.
             os.write(fd, blob)
