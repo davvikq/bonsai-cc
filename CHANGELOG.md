@@ -17,6 +17,14 @@ versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 - Friendlier error when `--port N` collides with a port already in
   use, instead of a raw `OSError`.
 
+## [0.2.7] — 2026-05-22
+
+- Hook client no longer holds the journal byte-range lock across
+  `fsync` on Windows. Under bursts of concurrent hook invocations the
+  serialised flushes could blow the 500 ms write budget and silently
+  drop events; the lock now covers only the append and `fsync` runs
+  after it is released.
+
 ## [0.2.6] — 2026-05-22
 
 - Web view no longer returns `ERR_CONNECTION_REFUSED` on startup when
@@ -26,11 +34,6 @@ versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 - Startup catch-up scan skips journals for sessions already finalised
   (`complete`/`recovered`) in the garden instead of re-reading and
   re-publishing their full event backlog through the live runner.
-- Hook client no longer holds the journal byte-range lock across
-  `fsync` on Windows. Under bursts of concurrent hook invocations the
-  serialised flushes could blow the 500 ms write budget and silently
-  drop events; the lock now covers only the append and `fsync` runs
-  after it is released.
 
 ## [0.2.5] — 2026-05-17
 
