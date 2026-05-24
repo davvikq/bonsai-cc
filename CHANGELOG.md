@@ -17,6 +17,18 @@ versioning: [SemVer](https://semver.org/spec/v2.0.0.html).
 - Friendlier error when `--port N` collides with a port already in
   use, instead of a raw `OSError`.
 
+## [0.2.8] — 2026-05-25
+
+- Lifetime stats (Total / Sessions / Streak) now sit as a compact
+  strip in the web header and stay visible during live sessions.
+  Previously the idle hero with these numbers was hidden by
+  `body.live` whenever a Claude Code session was active, so a user
+  in a long-running session couldn't see their accumulated totals
+  without ending the session first. Source remains
+  `/api/garden/stats`; the strip refreshes on the same 30-second
+  cadence as the idle hero. Hidden on narrow viewports (<720px) to
+  keep the header tight.
+
 ## [0.2.7] — 2026-05-22
 
 - Hook client no longer holds the journal byte-range lock across

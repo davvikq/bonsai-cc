@@ -113,11 +113,41 @@
   }
   header .banner.disconnected { color: var(--bcc-crail); }
   header .session-count {
-    margin-left: auto;
     color: var(--bcc-cloudy);
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.10em;
+  }
+  /* Compact stats strip in the header -- always visible, regardless
+     of live/idle. Mirrors the idle-hero's Total / Sessions / Streak
+     so a user with an active Claude Code session can still see their
+     accumulated numbers without waiting for the live tree to clear.
+     Source: /api/garden/stats (same endpoint loadHeroStats uses). */
+  header .header-stats {
+    margin-left: auto;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header .header-stats .hs {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+  }
+  header .header-stats .hs-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--bcc-ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.005em;
+  }
+  header .header-stats .hs.empty .hs-value { color: var(--bcc-cloudy); }
+  header .header-stats .hs-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--bcc-cloudy);
+    font-weight: 600;
   }
   /* Dark mode toggle -- sits at the right edge of the header. Shows
      the icon for the *target* state (moon when light → click to go
@@ -776,6 +806,10 @@
       padding: 12px 14px;
     }
     header .session-count { margin-left: 0; }
+    /* Header stats: hide on narrow viewports to keep the header
+       one or two rows tall. Power users still see them after
+       rotating to landscape. */
+    header .header-stats { display: none; }
     /* Live area: stack canvas above the tools sidebar so the canvas
        gets full width instead of being squeezed to ~120 px. */
     #live-area { grid-template-columns: 1fr; }
@@ -924,6 +958,20 @@
   <header>
     <a href="/" class="brand" title="back to garden">bonsai-cc</a>
     <span id="banner" class="banner">connecting…</span>
+    <div class="header-stats" id="header-stats" aria-label="lifetime stats">
+      <span class="hs empty" title="total Claude Code time across all sessions">
+        <span class="hs-value" id="hb-total">--</span>
+        <span class="hs-label">total</span>
+      </span>
+      <span class="hs empty" title="number of saved sessions in the garden">
+        <span class="hs-value" id="hb-sessions">--</span>
+        <span class="hs-label">sessions</span>
+      </span>
+      <span class="hs empty" title="consecutive days with at least one session">
+        <span class="hs-value" id="hb-streak">--</span>
+        <span class="hs-label">streak</span>
+      </span>
+    </div>
     <span class="session-count" id="session-count"></span>
     <button id="theme-toggle" class="theme-toggle"
             aria-label="toggle dark mode" title="toggle dark mode">
@@ -2006,6 +2054,28 @@ async function loadHeroStats() {
       else $strS.textContent = "keep it going";
     }
     if ($str) $str.classList.toggle("empty", streak === 0);
+
+    // Compact header strip -- always visible (including during a
+    // live session), so accumulated stats remain in view when the
+    // idle hero is hidden by body.live.
+    const $hbTotal = document.getElementById("hb-total");
+    const $hbSess  = document.getElementById("hb-sessions");
+    const $hbStr   = document.getElementById("hb-streak");
+    if ($hbTotal) {
+      $hbTotal.textContent = dur.primary;
+      const $cell = $hbTotal.closest(".hs");
+      if ($cell) $cell.classList.toggle("empty", (s.total_seconds || 0) === 0);
+    }
+    if ($hbSess) {
+      $hbSess.textContent = String(s.sessions_count || 0);
+      const $cell = $hbSess.closest(".hs");
+      if ($cell) $cell.classList.toggle("empty", (s.sessions_count || 0) === 0);
+    }
+    if ($hbStr) {
+      $hbStr.textContent = streak === 0 ? "0" : `${streak}d`;
+      const $cell = $hbStr.closest(".hs");
+      if ($cell) $cell.classList.toggle("empty", streak === 0);
+    }
   } catch (err) {
     console.error("loadHeroStats failed", err);
   }
